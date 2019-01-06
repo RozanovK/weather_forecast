@@ -1,0 +1,19 @@
+{
+  "list": [{"city_name": "Warsaw", "x":680, "y":435}, 
+           {"city_name": "Gdańsk", "x":440, "y":80},
+           {"city_name": "Szczecin", "x":50, "y":220},
+           {"city_name": "Olsztyn", "x":615, "y":170},
+           {"city_name": "Bydgoszcz", "x":380, "y":285},
+           {"city_name": "Białystok", "x":880, "y":270},
+           {"city_name": "Poznań", "x":270, "y":390},
+           {"city_name": "Gorzów wielkopolski", "x":110, "y":340},
+           {"city_name": "Lublin", "x":840, "y":590},
+           {"city_name": "Łódź", "x":520, "y":510},
+           {"city_name": "Wrocław", "x":270, "y":600},
+           {"city_name": "Opole", "x":365, "y":680},
+           {"city_name": "Katowice", "x":470, "y":750},
+           {"city_name": "Kraków", "x":580, "y":780},
+           {"city_name": "Kielce", "x":645, "y":650},
+           {"city_name": "Rzeszów", "x":790, "y":790}
+           ]
+}
