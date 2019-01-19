@@ -14,12 +14,9 @@ from PyQt5.QtGui import *
 from PyQt5.QtCore import *
 from PyQt5.QtWidgets import *
 from datetime import datetime, timedelta
-from matplotlib.backends.qt_compat import QtCore
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
-from matplotlib.ticker import FuncFormatter, MaxNLocator
-from urllib.parse import urlencode
 from vtk.qt.QVTKRenderWindowInteractor import *
 from vtk_bar import vtk_bar
 
@@ -69,8 +66,12 @@ class weatherForecast(QWidget):
     self.canvas2d = FigureCanvas(self.fig)
     self.toolbar = NavigationToolbar(self.canvas2d, self)
     self.fig.set_tight_layout(True)
-    self.ax = self.canvas2d.figure.subplots(5, sharex=True)
- 
+    self.ax = self.canvas2d.figure.subplots(5)
+    self.ax[0].set_xticklabels([])
+    self.ax[1].set_xticklabels([])
+    self.ax[2].set_xticklabels([])
+    self.ax[3].set_xticklabels([])
+
     self.forecastNotes = QLabel("forecaster notes") 
 
     self.frame = QFrame()
@@ -92,11 +93,12 @@ class weatherForecast(QWidget):
     city = self.chooseCity.text()
     date = self.chooseDate.currentText()
     df = self.get_df(city, date)
+
     self.plot_temperature(df, self.ax[0])
-    #self.plot_humidity(df, self.ax[1])
-    self.plot_pressure(df, self.ax[2])
+    self.plot_humidity(df, self.ax[1])
+    self.plot_wind_direction(df, self.ax[2])
     self.plot_wind(df, self.ax[3])
-    self.plot_wind_direction(df, self.ax[4])
+    self.plot_pressure(df, self.ax[4])
     self.canvas2d.draw()
   
   def _dict_to_val(self, _dict):
@@ -156,6 +158,7 @@ class weatherForecast(QWidget):
     ax1.plot(x, df2['temp_pkt_rosy'], 'm*') 
     ax1.grid(True)
     ax1.axhspan(minimum - 2, 0, facecolor='#73bdfe', alpha = 0.3)
+    ax1.autoscale(enable=True, axis='both')
 
   def plot_humidity(self, df2, ax1):
     t_dict = {}
@@ -207,6 +210,7 @@ class weatherForecast(QWidget):
     ax1.plot(df2["time"], df2["wind_speed"])
     ax1.tick_params(axis='y')
 
+
   def get_change(self, deg, radius):
     rad = math.radians(deg % 360);
     dx = radius * math.cos(rad);
@@ -217,11 +221,15 @@ class weatherForecast(QWidget):
     #fig, ax = plt.subplots()
     #ax1.xlim(-3,24)
     #ax1.ylim(-15,15)
-    x = df2["dt_txt1"].dt.hour
+    x = df2["time"].dt.hour
     #ax1.xticks(x)
 
     for hour,deg in zip(x, df2["wind_deg"]):
         vector = self.get_change(deg - 90, 3)
+        print(hour)
+        print(vector[0])
+        print(vector[1])
+        print(deg)
         ax1.arrow(hour,  
                   0,
                   vector[0],
