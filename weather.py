@@ -14,9 +14,12 @@ from PyQt5.QtGui import *
 from PyQt5.QtCore import *
 from PyQt5.QtWidgets import *
 from datetime import datetime, timedelta
+from matplotlib.backends.qt_compat import QtCore
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
+from matplotlib.ticker import FuncFormatter, MaxNLocator
+from urllib.parse import urlencode
 from vtk.qt.QVTKRenderWindowInteractor import *
 from vtk_bar import vtk_bar
 
@@ -71,14 +74,45 @@ class weatherForecast(QWidget):
     self.ax[1].set_xticklabels([])
     self.ax[2].set_xticklabels([])
     self.ax[3].set_xticklabels([])
-
+ 
     self.forecastNotes = QLabel("forecaster notes") 
 
     self.frame = QFrame()
+    self.frame.setFixedHeight(400);
+
     self.vtkWidget = QVTKRenderWindowInteractor(self.frame)
     forecast3dvertical = QVBoxLayout() 
     self.forecast3d.setLayout(forecast3dvertical)
+    self.option_list = QWidget()
+    layout = QHBoxLayout()
+
+    self.b1 = QRadioButton("Humidity")
+    self.b1.setChecked(True)
+    self.b1.toggled.connect(lambda:self.btnstate(self.b1))
+    layout.addWidget(self.b1)
+    
+    self.b2 = QRadioButton("Cloud")
+    self.b2.toggled.connect(lambda:self.btnstate(self.b2))
+    layout.addWidget(self.b2)
+		
+    self.b3 = QRadioButton("Rain")
+    self.b3.toggled.connect(lambda:self.btnstate(self.b3))
+    layout.addWidget(self.b3)
+    
+    self.b4 = QRadioButton("Temperature")
+    self.b4.toggled.connect(lambda:self.btnstate(self.b4))
+    layout.addWidget(self.b4)
+
+    self.b5 = QRadioButton("Wind")
+    self.b5.toggled.connect(lambda:self.btnstate(self.b5))
+    layout.addWidget(self.b5)
+
+    self.option_list.setLayout(layout)
+    
     forecast3dvertical.addWidget(self.forecastNotes)
+    forecast3dvertical.addStretch();
+
+    forecast3dvertical.addWidget(self.option_list)
     forecast3dvertical.addWidget(self.frame)
     horiz = QHBoxLayout() 
     self.graphs.setLayout(horiz)
@@ -87,18 +121,26 @@ class weatherForecast(QWidget):
     layroot.addWidget(self.graphs)
     layroot.addWidget(self.toolbar)
     self.show()
+    self.option = 1
+    self.dataframe_collection = {}
+    self.init_dataframe_collection()
     self.visualise3d()
 
   def update_weather(self):
     city = self.chooseCity.text()
     date = self.chooseDate.currentText()
     df = self.get_df(city, date)
-
     self.plot_temperature(df, self.ax[0])
     self.plot_humidity(df, self.ax[1])
     self.plot_wind_direction(df, self.ax[2])
     self.plot_wind(df, self.ax[3])
     self.plot_pressure(df, self.ax[4])
+
+    #self.plot_temperature(df, self.ax[0])
+    #self.plot_humidity(df, self.ax[1])
+    #self.plot_pressure(df, self.ax[2])
+    #self.plot_wind(df, self.ax[3])
+    #self.plot_wind_direction(df, self.ax[4])
     self.canvas2d.draw()
   
   def _dict_to_val(self, _dict):
@@ -160,6 +202,7 @@ class weatherForecast(QWidget):
     ax1.axhspan(minimum - 2, 0, facecolor='#73bdfe', alpha = 0.3)
     ax1.autoscale(enable=True, axis='both')
 
+
   def plot_humidity(self, df2, ax1):
     t_dict = {}
     tList = []
@@ -210,7 +253,6 @@ class weatherForecast(QWidget):
     ax1.plot(df2["time"], df2["wind_speed"])
     ax1.tick_params(axis='y')
 
-
   def get_change(self, deg, radius):
     rad = math.radians(deg % 360);
     dx = radius * math.cos(rad);
@@ -219,17 +261,13 @@ class weatherForecast(QWidget):
 
   def plot_wind_direction(self, df2, ax1):
     #fig, ax = plt.subplots()
-    #ax1.xlim(-3,24)
-    #ax1.ylim(-15,15)
-    x = df2["time"].dt.hour
+    ax1.set_xlim(-3,24)
+    ax1.set_ylim(-2,2)
+    x = df2["dt_txt1"].dt.hour
     #ax1.xticks(x)
 
     for hour,deg in zip(x, df2["wind_deg"]):
-        vector = self.get_change(deg - 90, 3)
-        print(hour)
-        print(vector[0])
-        print(vector[1])
-        print(deg)
+        vector = self.get_change(deg - 90, 1)
         ax1.arrow(hour,  
                   0,
                   vector[0],
@@ -237,7 +275,35 @@ class weatherForecast(QWidget):
                   color="b",
                   head_width = 0.5,
                   head_length = 1)
+    #ax1.autoscale(enable=True, axis='both')
+  
+  def btnstate(self,b):	
+    self.renderer.RemoveAllViewProps() 
+    if b.text() == "Humidity":
+        if b.isChecked() == True:
+            self.option = 1				
+    if b.text() == "Cloud":
+        if b.isChecked() == True:
+            self.option = 2				
+    if b.text() == "Rain":
+        if b.isChecked() == True:
+            self.option = 3
+    if b.text() == "Temperature":
+        if b.isChecked() == True:
+            self.option = 4
+    if b.text() == "Wind":
+        if b.isChecked() == True:
+            self.option = 5				
+    self.visualise3d()
 
+  def init_dataframe_collection(self):
+    with open("input_data_config.json") as json_data:
+        d = json.load(json_data)
+        data = pd.DataFrame.from_dict(d['list']) 
+    date =str(datetime.today().date() + timedelta(days=1))
+    for city in data["city_name"]:
+        self.dataframe_collection[city] = self.get_df(city, date)
+  
   def visualise3d(self):
     with open("input_data_config.json") as json_data:
         d = json.load(json_data)
@@ -250,29 +316,31 @@ class weatherForecast(QWidget):
     img = plt.imread("poland.jpg")
     fig, ax = plt.subplots()
     fig.set_size_inches(50,50)
-    for city,x,y in zip(data["city_name"], data["x"], data["y"]):
-        df = self.get_df(city, date)
-        deg = df["wind_deg"].mean()
-        speed = df["wind_speed_kmh"].mean()
-        vector = self.get_change(deg - 90, speed)
-        ax.arrow(x,  
-                 y,
-                 vector[0],
-                 -vector[1], 
-                 width = 5,
-                 color="b",
-                 head_width = speed,
-                 head_length = speed*2)
+    if (self.option == 5):
+        for city,x,y in zip(data["city_name"], data["x"], data["y"]):
+            df = self.dataframe_collection[city]
+            deg = df["wind_deg"].mean()
+            speed = df["wind_speed_kmh"].mean()
+            vector = self.get_change(deg - 90, speed*2)
+            ax.arrow(x,  
+                     y,
+                     vector[0],
+                     -vector[1], 
+                     width = 5,
+                     color="b",
+                     head_width = speed,
+                     head_length = speed*2)
     ax.imshow(img)
     fig.savefig("poland_plane.jpg")
  
   def plot3d(self, data, date):
     camera = vtk.vtkCamera()
-    camera.SetPosition(1,1,1)
+    camera.SetPosition(1,0,0)
     camera.SetFocalPoint(0,0,0)
-
-    renderer = vtk.vtkRenderer()
-    self.vtkWidget.GetRenderWindow().AddRenderer(renderer)
+    camera.Roll(-90) 
+    camera.Zoom(0.7) 
+    self.renderer = vtk.vtkRenderer()
+    self.vtkWidget.GetRenderWindow().AddRenderer(self.renderer)
 
     plane = vtk.vtkPlaneSource()
     plane.SetCenter(0.0, 0.0, 0.0)
@@ -293,29 +361,45 @@ class weatherForecast(QWidget):
     actor = vtk.vtkActor()
     actor.SetMapper(mapper)
     actor.SetTexture(texture)
-    renderer.AddActor(actor)
+    self.renderer.AddActor(actor)
 
-    for city,x,y in zip(data["city_name"], data["x"], data["y"]):
-        df = self.get_df(city, date)
-        val = df["humidity"].mean()
-        cubeActor = vtk_bar((0,x/700-0.72,-y/700+0.72), val/500)
-        cubeActor.GetMapper().ScalarVisibilityOff()
-        cubeActor.GetProperty().SetColor((0, 0, 255))
-        cubeActor.GetProperty().SetInterpolationToFlat()
-        scale_transform = vtk.vtkTransform()
-        scale_transform.Scale(0.5, 0.5, 0.5)
-        cubeActor.SetUserTransform(scale_transform)
-        renderer.AddActor(cubeActor)
+    if (self.option != 5):
+        for city,x,y in zip(data["city_name"], data["x"], data["y"]):
+            df = self.dataframe_collection[city]
+            val = 0
+            if self.option == 1:
+                val = df["humidity"].mean()
+            elif self.option == 3:
+                rain_max = df["rain"].max()
+                val = (100 / (df["rain"].max() - df["rain"].min())) * (df["rain"].mean() - df["rain"].min())
+                if math.isnan(val):
+                    val = 0
+            if(val != 0):
+                cubeActor = vtk_bar((0,x/700-0.72,-y/700+0.72), val/500)
+                cubeActor.GetMapper().ScalarVisibilityOff()
+                cubeActor.GetProperty().SetColor((0, 0, 255))
+                cubeActor.GetProperty().SetInterpolationToFlat()
+                scale_transform = vtk.vtkTransform()
+                scale_transform.Scale(0.5, 0.5, 0.5)
+                cubeActor.SetUserTransform(scale_transform)
+                self.renderer.AddActor(cubeActor)
+            if self.option == 2:
+                source = vtk.vtkSphereSource()
+                source.SetCenter(0.1,x/1400-0.36,-y/1400+0.36)
+                source.SetRadius(df["clouds"].mean()/1500)
+                mapper = vtk.vtkPolyDataMapper()
+                mapper.SetInputConnection(source.GetOutputPort())
+                actor = vtk.vtkActor()
+                actor.SetMapper(mapper)
+                self.renderer.AddActor(actor)
 
-    renderer.SetActiveCamera(camera)
-    renderer.ResetCamera()
+    self.renderer.SetActiveCamera(camera)
+    #self.renderer.ResetCamera()
     
     self.vtkWidget.Initialize()
     self.vtkWidget.Start()
 
-    del cubeActor
-    del camera
-    del renderer
+
 
 def main():
   app = QApplication(sys.argv)
