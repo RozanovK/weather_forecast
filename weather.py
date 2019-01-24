@@ -19,6 +19,7 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter, MaxNLocator
+from scipy.interpolate import griddata
 from urllib.parse import urlencode
 from vtk.qt.QVTKRenderWindowInteractor import *
 from vtk_bar import vtk_bar
@@ -29,6 +30,11 @@ api_key = "94bd224fdd23e740f91f7fc88375518f"
 class weatherForecast(QWidget):
   def __init__(self, parent = None):
     super(weatherForecast, self).__init__(parent)
+    if (len(sys.argv) != 2):
+        raise Exception("Program needs to be run with: python3 weather.py input_data_config.json")
+    self.ax2_pressure = None
+    self.ax2_humidity = None
+
     self.resize(1000,960)
     layroot = QVBoxLayout() 
     self.setLayout(layroot)
@@ -74,8 +80,6 @@ class weatherForecast(QWidget):
     self.ax[1].set_xticklabels([])
     self.ax[2].set_xticklabels([])
     self.ax[3].set_xticklabels([])
- 
-    self.forecastNotes = QLabel("forecaster notes") 
 
     self.frame = QFrame()
     self.frame.setFixedHeight(400);
@@ -106,6 +110,14 @@ class weatherForecast(QWidget):
     self.b5 = QRadioButton("Wind")
     self.b5.toggled.connect(lambda:self.btnstate(self.b5))
     layout.addWidget(self.b5)
+    
+    self.forecastNotes_lbl = QLabel("forecaster notes")
+    self.forecastNotes = QTextEdit()
+    self.forecastNotes.setReadOnly(True)
+    self.forecastNotes.setLineWrapMode(QTextEdit.NoWrap)
+    font = self.forecastNotes.font()
+    font.setFamily("Courier")
+    font.setPointSize(10) 
 
     self.option_list.setLayout(layout)
     
@@ -128,21 +140,33 @@ class weatherForecast(QWidget):
 
   def update_weather(self):
     city = self.chooseCity.text()
+    if (city is ""):
+        print ("You need to enter city first!")
+        return
     date = self.chooseDate.currentText()
     df = self.get_df(city, date)
+    self.set_forecast_notes(df)
     self.plot_temperature(df, self.ax[0])
     self.plot_humidity(df, self.ax[1])
     self.plot_wind_direction(df, self.ax[2])
     self.plot_wind(df, self.ax[3])
     self.plot_pressure(df, self.ax[4])
 
-    #self.plot_temperature(df, self.ax[0])
-    #self.plot_humidity(df, self.ax[1])
-    #self.plot_pressure(df, self.ax[2])
-    #self.plot_wind(df, self.ax[3])
-    #self.plot_wind_direction(df, self.ax[4])
     self.canvas2d.draw()
-  
+
+  def max_temp(self, df2):
+      return df2['temp_max'].max()
+
+  def min_temp(self, df2):
+      return df2['temp_min'].min()
+
+  def set_forecast_notes(self, df):
+      self.forecastNotes.clear()
+      self.forecastNotes.insertPlainText("Max temperature: {}\n"
+                                         "Min temperature: {}".format(self.max_temp(df),
+                                                                      self.min_temp(df)))
+	 
+
   def _dict_to_val(self, _dict):
     try:
         return list(_dict.values())[0]
@@ -190,6 +214,7 @@ class weatherForecast(QWidget):
     return df_found
 
   def plot_temperature(self, df2, ax1):
+    ax1.cla()
     x = df2["dt_txt1"].dt.hour
     plt.xticks(x)
     minimum = min(df2['temp_odcz'].min(), df2['temp_pkt_rosy'].min())
@@ -204,6 +229,10 @@ class weatherForecast(QWidget):
 
 
   def plot_humidity(self, df2, ax1):
+    ax1.cla()
+    ax1.set_ylim(0,120)
+
+
     t_dict = {}
     tList = []
     t = 0
@@ -215,40 +244,48 @@ class weatherForecast(QWidget):
         t = t + 1
 
     ax1.plot(tList, df2["humidity"],'ro')
-    print(tList)
+    #print(tList)
     z = np.polyfit(tList, df2["humidity"], 25)
     f = np.poly1d(z)
     x_new = np.linspace(tList[0], tList[-1], 50)
     y_new = f(x_new)
+    ax1.set_xlim(min(x_new), max(x_new))
     ax1.plot(x_new, y_new, color="blue")
 
     ax1.set_ylabel('Humidity')
-    ax1.set_xticks(date_time_list)
-    ax1.autoscale(tight=True)
 
-    ax2 = ax1.twinx()
-
+    if self.ax2_humidity:
+        self.ax2_humidity.cla()
+        self.ax2_humidity = None
+    self.ax2_humidity = ax1.twinx()
     color = 'tab:blue'
-    ax2.bar([t -500 for t in tList], df2["snow"], color=color, width=1000)
-    ax2.tick_params(axis='y', labelcolor=color)
-    ax2.set_ylim([df2["snow"].min() ,df2["snow"].max() + 10])
-
+    self.ax2_humidity.bar([t -500 for t in tList], df2["snow"], color=color, width=1000)
+    self.ax2_humidity.tick_params(axis='y', labelcolor=color)
+    self.ax2_humidity.set_ylim([df2["snow"].min() ,df2["snow"].max() + 10])
 
     color = 'tab:green'
-    ax2.bar([t +500 for t in tList], df2["rain"], color=color, width=1000)
-    #fig.tight_layout()
+
+    self.ax2_humidity.bar([t +500 for t in tList], df2["rain"], color=color, width=1000)
+	
+    self.ax2_humidity.set_xticklabels([])
+    self.ax2_humidity.set_xlim(min(x_new), max(x_new))
 
   def plot_pressure(self, df2, ax1):
+    ax1.cla()
     df2["pressure_mmHg"] = df2.apply(lambda x: x.pressure*0.7500616827, axis=1)
-    print(df2["time"])
     ax1.set_ylabel('Pressure [hPa]')
     ax1.plot(df2["time"], df2["pressure"])
     ax1.tick_params(axis='y')
-    ax2 = ax1.twinx()
-    ax2.plot(df2["time"], df2["pressure_mmHg"])
-    ax2.set_ylabel('Pressure [mmHg]')
-  
+    if self.ax2_pressure:
+        self.ax2_pressure.cla()
+        self.ax2_pressure = None
+    self.ax2_pressure = ax1.twinx()
+    self.ax2_pressure.set_xticklabels([])
+    self.ax2_pressure.plot(df2["time"], df2["pressure_mmHg"])
+    self.ax2_pressure.set_ylabel('Pressure [mmHg]') 
+
   def plot_wind(self, df2, ax1):
+    ax1.cla()
     ax1.set_ylabel('Wind')
     ax1.plot(df2["time"], df2["wind_speed"])
     ax1.tick_params(axis='y')
@@ -260,11 +297,10 @@ class weatherForecast(QWidget):
     return [dx, dy];
 
   def plot_wind_direction(self, df2, ax1):
-    #fig, ax = plt.subplots()
+    ax1.cla()
     ax1.set_xlim(-3,24)
     ax1.set_ylim(-2,2)
     x = df2["dt_txt1"].dt.hour
-    #ax1.xticks(x)
 
     for hour,deg in zip(x, df2["wind_deg"]):
         vector = self.get_change(deg - 90, 1)
@@ -275,7 +311,6 @@ class weatherForecast(QWidget):
                   color="b",
                   head_width = 0.5,
                   head_length = 1)
-    #ax1.autoscale(enable=True, axis='both')
   
   def btnstate(self,b):	
     self.renderer.RemoveAllViewProps() 
@@ -297,7 +332,7 @@ class weatherForecast(QWidget):
     self.visualise3d()
 
   def init_dataframe_collection(self):
-    with open("input_data_config.json") as json_data:
+    with open(sys.argv[1]) as json_data:
         d = json.load(json_data)
         data = pd.DataFrame.from_dict(d['list']) 
     date =str(datetime.today().date() + timedelta(days=1))
@@ -305,7 +340,7 @@ class weatherForecast(QWidget):
         self.dataframe_collection[city] = self.get_df(city, date)
   
   def visualise3d(self):
-    with open("input_data_config.json") as json_data:
+    with open(sys.argv[1]) as json_data:
         d = json.load(json_data)
         data = pd.DataFrame.from_dict(d['list']) 
     date =str(datetime.today().date() + timedelta(days=1))
@@ -362,7 +397,8 @@ class weatherForecast(QWidget):
     actor.SetMapper(mapper)
     actor.SetTexture(texture)
     self.renderer.AddActor(actor)
-
+    points = vtk.vtkPoints()
+    mat = []
     if (self.option != 5):
         for city,x,y in zip(data["city_name"], data["x"], data["y"]):
             df = self.dataframe_collection[city]
@@ -392,14 +428,98 @@ class weatherForecast(QWidget):
                 actor = vtk.vtkActor()
                 actor.SetMapper(mapper)
                 self.renderer.AddActor(actor)
-
-    self.renderer.SetActiveCamera(camera)
-    #self.renderer.ResetCamera()
+            if self.option == 4:
+                textActor = vtk.vtkTextActor()
+                textActor.SetInput ("Hello world")
+                textActor.SetPosition2 ( x/1400-0.36, -y/1400+0.36 )
+                textActor.GetTextProperty().SetFontSize ( 1 )
+                textActor.GetTextProperty().SetColor ( 1.0, 0.0, 0.0 )
+                self.renderer.AddActor2D ( textActor )
+                points.InsertNextPoint(df["temp"].mean(), x/1400-0.36, -y/1400+0.36)
+                mat.append([x/1400-0.36, -y/1400+0.36, df["temp"].mean()])
     
+    if self.option == 4:
+        mat = np.array(mat)
+        plane = vtk.vtkPlaneSource()
+        plane.SetCenter(0.0, 0.0, 0.0)
+        plane.SetNormal(1.0, 0.0, 0.0)
+
+        inputPolyData = vtk.vtkPolyData()
+        inputPolyData.SetPoints(points)
+        delaunay = vtk.vtkDelaunay2D()
+        delaunay.SetInputData(inputPolyData)
+        delaunay.Update()
+        outputPolyData = delaunay.GetOutput()
+        bounds = [0 for i in range(6)]
+        outputPolyData.GetBounds(bounds)
+        xMin = bounds[2]
+        xMax = bounds[3]
+        yMin = bounds[4]
+        yMax = bounds[5]
+
+        x = np.linspace(xMin, xMax, 50)
+        y = np.linspace(yMin, yMax, 50)
+        x, y = np.meshgrid(x,y)
+        x, y = x.flatten(), y.flatten()
+        z = griddata((mat[:,0], mat[:,1]), mat[:,2], (x,y), method='nearest')
+        z = z.flatten()
+
+        plane.SetResolution(49,49)
+        plane.SetOrigin([0.1, xMin, yMin])
+        plane.SetPoint1([0.1, xMax, yMin])
+        plane.SetPoint2([0.1, xMin, yMax])
+        plane.Update()
+
+        nPoints = plane.GetOutput().GetNumberOfPoints()
+        scalars = vtk.vtkFloatArray()
+        scalars.SetNumberOfValues(nPoints)
+        for i in range(nPoints):
+            scalars.SetValue(i, float(z[i]))
+        plane.GetOutput().GetPointData().SetScalars(scalars)
+
+        lookupTable = vtk.vtkLookupTable()
+        lookupTable.SetTableRange (np.amin(z), np.amax(z))
+        lookupTable.SetHueRange (0.5, 1);
+        lookupTable.SetSaturationRange (1, 1);
+        lookupTable.SetValueRange (1,1);
+        lookupTable.Build()
+
+        colorSeries = vtk.vtkColorSeries()
+        colorSeries.SetColorScheme(vtk.vtkColorSeries.BREWER_DIVERGING_SPECTRAL_10)
+        lut = vtk.vtkColorTransferFunction()
+        lut.SetColorSpaceToHSV()
+        nColors = colorSeries.GetNumberOfColors()
+        zMin = np.min(z)
+        zMax = np.max(z)
+        for i in range(0, nColors):
+            color = colorSeries.GetColor(i)
+            color = [c/255.0 for c in color]
+            t = zMin + float(zMax - zMin)/(nColors - 1) * i
+            lut.AddRGBPoint(t, color[0], color[1], color[2])
+ 
+        colorbar = vtk.vtkScalarBarActor()
+        colorbar.SetMaximumNumberOfColors(400)
+        colorbar.SetLookupTable (lut)
+        colorbar.SetWidth(0.05)
+        colorbar.SetPosition(0.95, 0.1)
+        colorbar.SetLabelFormat("%.3g")
+        colorbar.VisibilityOn()
+        self.renderer.AddActor(colorbar)
+
+        mapper = vtk.vtkPolyDataMapper()
+        mapper.SetInputConnection(plane.GetOutputPort())
+        mapper.ScalarVisibilityOn()
+        mapper.SetScalarModeToUsePointData()
+        mapper.SetLookupTable(lut)
+        mapper.SetColorModeToMapScalars()
+
+        actor = vtk.vtkActor()
+        actor.GetProperty().SetOpacity(0.9)
+        actor.SetMapper(mapper)
+        self.renderer.AddActor(actor)
+    self.renderer.SetActiveCamera(camera)
     self.vtkWidget.Initialize()
     self.vtkWidget.Start()
-
-
 
 def main():
   app = QApplication(sys.argv)
